@@ -175,21 +175,28 @@ Success rate is 100 percent (5/5)
 | mode              | command                                              | purpose                                    |
 |-------------------|------------------------------------------------------|--------------------------------------------|
 | user EXEC         | `enable`                                             | enter priv EXEC                            |
-| user / priv       | `ping8 <addr>`                                       | send 5 ICMPv8 echoes                       |
-| user / priv       | `show ipv8 interface [brief]`                        | list interfaces + state                    |
+| user / priv       | `ping8 <ADDR>` / `ping <X.X.X.X>`                    | send 5 ICMP(v8) echoes                     |
+| user / priv       | `show ipv8 interface [brief]`                        | list IPv8 interfaces + state               |
 | user / priv       | `show ipv8 route`                                    | print the two-tier routing table           |
+| user / priv       | `show ip interface [brief]`                          | list *IPv4-compat* interfaces (ASN=0)      |
+| user / priv       | `show ip route`                                      | IPv4-only view of the routing table        |
 | priv              | `show running-config`                                | dump CLI-reconstructible config            |
 | priv              | `configure terminal`                                 | enter global config                        |
 | global config     | `hostname NAME`                                      | rename device                              |
 | global config     | `interface NAME`                                     | enter interface config                     |
-| global config     | `ipv8 route PFX/LEN NEXT_HOP`                        | static route via next-hop                  |
-| global config     | `ipv8 route PFX/LEN interface IFACE`                 | directly-connected static route            |
+| global config     | `ipv8 route PFX/LEN NEXT_HOP`                        | IPv8 static route via next-hop             |
+| global config     | `ipv8 route PFX/LEN interface IFACE`                 | IPv8 directly-connected static route       |
+| global config     | `ip route X.X.X.X/LEN Y.Y.Y.Y`                       | IPv4 static route (stored under ASN=0)     |
+| global config     | `ip route X.X.X.X/LEN interface IFACE`               | IPv4 directly-connected route              |
 | global config     | `no ipv8 route PFX/LEN`                              | remove a route                             |
 | global config     | `end` / `exit`                                       | return to priv EXEC                        |
-| interface config  | `ipv8 address ADDR`                                  | assign IPv8 address                        |
+| interface config  | `ipv8 address R.R.R.R.N.N.N.N`                       | assign a native IPv8 address               |
+| interface config  | `ip address X.X.X.X`                                 | assign an IPv4 address (ASN=0 shortcut)    |
 | interface config  | `no shutdown` / `shutdown`                           | enable / disable interface                 |
 | interface config  | `description TEXT`                                   | free-form label                            |
 | interface config  | `exit`                                               | leave interface config                     |
+
+> The `ip …` forms are **exact shortcuts** for `ipv8 … 0.0.0.0.…`.  `ip address 10.0.0.1` and `ipv8 address 0.0.0.0.10.0.0.1` produce byte-identical `Interface` state; `ping 10.0.0.1` and `ping8 0.0.0.0.10.0.0.1` generate byte-identical frames. The library layer has a single code path — the two surfaces are just parser-level aliases.
 
 ---
 
@@ -555,24 +562,31 @@ Success rate is 100 percent (5/5)
 
 ### コマンドリファレンス
 
-| モード            | コマンド                                             | 用途                                     |
-|-------------------|------------------------------------------------------|------------------------------------------|
-| user EXEC         | `enable`                                             | priv EXEC へ移行                         |
-| user / priv       | `ping8 <addr>`                                       | ICMPv8 echo を 5 回送出                  |
-| user / priv       | `show ipv8 interface [brief]`                        | インターフェース一覧                     |
-| user / priv       | `show ipv8 route`                                    | 二階層ルーティング表を表示               |
-| priv              | `show running-config`                                | 現在の設定を CLI 形式で出力              |
-| priv              | `configure terminal`                                 | グローバル config へ                     |
-| global config     | `hostname NAME`                                      | ホスト名変更                             |
-| global config     | `interface NAME`                                     | インターフェース config へ               |
-| global config     | `ipv8 route PFX/LEN NEXT_HOP`                        | ネクストホップ経由の static route        |
-| global config     | `ipv8 route PFX/LEN interface IFACE`                 | 直接接続の static route                  |
-| global config     | `no ipv8 route PFX/LEN`                              | ルート削除                               |
-| global config     | `end` / `exit`                                       | priv EXEC へ戻る                         |
-| interface config  | `ipv8 address ADDR`                                  | IPv8 アドレス設定                        |
-| interface config  | `no shutdown` / `shutdown`                           | インターフェース有効/無効                |
-| interface config  | `description TEXT`                                   | 任意ラベル                               |
-| interface config  | `exit`                                               | interface config を抜ける                |
+| モード            | コマンド                                             | 用途                                         |
+|-------------------|------------------------------------------------------|----------------------------------------------|
+| user EXEC         | `enable`                                             | priv EXEC へ移行                             |
+| user / priv       | `ping8 <ADDR>` / `ping <X.X.X.X>`                    | ICMP(v8) echo を 5 回送出                    |
+| user / priv       | `show ipv8 interface [brief]`                        | IPv8 インターフェース一覧                    |
+| user / priv       | `show ipv8 route`                                    | 二階層ルーティング表を表示                   |
+| user / priv       | `show ip interface [brief]`                          | **IPv4 互換 (ASN=0) のみ**を抽出表示         |
+| user / priv       | `show ip route`                                      | ルーティング表を IPv4 形式で表示             |
+| priv              | `show running-config`                                | 現在の設定を CLI 形式で出力                  |
+| priv              | `configure terminal`                                 | グローバル config へ                         |
+| global config     | `hostname NAME`                                      | ホスト名変更                                 |
+| global config     | `interface NAME`                                     | インターフェース config へ                   |
+| global config     | `ipv8 route PFX/LEN NEXT_HOP`                        | IPv8 static route（next-hop 経由）            |
+| global config     | `ipv8 route PFX/LEN interface IFACE`                 | IPv8 static route（直接接続）                 |
+| global config     | `ip route X.X.X.X/LEN Y.Y.Y.Y`                       | IPv4 static route（ASN=0 として記録）         |
+| global config     | `ip route X.X.X.X/LEN interface IFACE`               | IPv4 直接接続 route                          |
+| global config     | `no ipv8 route PFX/LEN`                              | ルート削除                                   |
+| global config     | `end` / `exit`                                       | priv EXEC へ戻る                             |
+| interface config  | `ipv8 address R.R.R.R.N.N.N.N`                       | ネイティブ IPv8 アドレスを割当               |
+| interface config  | `ip address X.X.X.X`                                 | IPv4 アドレス割当（ASN=0 のショートカット）   |
+| interface config  | `no shutdown` / `shutdown`                           | インターフェース有効/無効                    |
+| interface config  | `description TEXT`                                   | 任意ラベル                                   |
+| interface config  | `exit`                                               | interface config を抜ける                    |
+
+> `ip …` 系は `ipv8 … 0.0.0.0.…` への **完全なショートカット**。`ip address 10.0.0.1` と `ipv8 address 0.0.0.0.10.0.0.1` は内部表現が完全一致し、`ping 10.0.0.1` と `ping8 0.0.0.0.10.0.0.1` が生成するフレームもバイト単位で同一。ライブラリ層のコードパスは一本で、2 つの構文は純粋にパーサーレベルのエイリアス。
 
 ---
 

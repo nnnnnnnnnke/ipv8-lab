@@ -157,6 +157,7 @@ class IOSCLI:
             "exit": self._cmd_exit,
             "logout": self._cmd_exit,
             "ping8": self._ping8,
+            "ping": self._ping_ipv4,
             "show": self._show,
         }
 
@@ -166,6 +167,7 @@ class IOSCLI:
             "configure": self._configure,
             "show": self._show,
             "ping8": self._ping8,
+            "ping": self._ping_ipv4,
             "write": self._write_mem,
             "exit": self._cmd_exit,
             "end": self._end,
@@ -176,6 +178,7 @@ class IOSCLI:
             "hostname": self._hostname,
             "interface": self._interface,
             "ipv8": self._conf_ipv8,
+            "ip": self._conf_ip,
             "no": self._conf_no,
             "end": self._end,
             "exit": self._exit_conf,
@@ -184,6 +187,7 @@ class IOSCLI:
     def _conf_if_cmds(self):
         return {
             "ipv8": self._ifconf_ipv8,
+            "ip": self._ifconf_ip,
             "no": self._ifconf_no,
             "shutdown": self._ifconf_shutdown,
             "description": self._ifconf_description,
@@ -337,6 +341,66 @@ class IOSCLI:
                 best_name, best_score = name, score
         return best_name
 
+    # --- IPv4-style shortcuts -------------------------------------------------
+    # These map 1:1 onto IPv8 ASN=0 operations so the two address spaces are
+    # provably identical at the library layer.
+    def _conf_ip(self, toks):
+        """'ip route 10.0.0.0/24 10.1.1.1' | '... interface Gig0/0'"""
+        if len(toks) >= 2 and toks[1] == "route":
+            args = toks[2:]
+            if len(args) < 2:
+                self._write(
+                    "% usage: ip route ADDR/LEN NEXT_HOP | interface IFACE"
+                )
+                return
+            pfx_part = args[0]
+            if "/" not in pfx_part:
+                self._write("% prefix must be ADDR/LEN"); return
+            v4_pfx, plen = pfx_part.split("/", 1)
+            try:
+                IPv8Address.from_string(f"0.0.0.0.{v4_pfx}")
+            except ValueError as e:
+                self._write(f"% bad prefix: {e}"); return
+            full_pfx = f"0.0.0.0.{v4_pfx}/{plen}"
+            if args[1] == "interface":
+                forwarded = [full_pfx, "interface"] + args[2:]
+            else:
+                try:
+                    IPv8Address.from_string(f"0.0.0.0.{args[1]}")
+                except ValueError as e:
+                    self._write(f"% bad next-hop: {e}"); return
+                forwarded = [full_pfx, f"0.0.0.0.{args[1]}"] + args[2:]
+            self._add_route(forwarded)
+        else:
+            self._write("% usage: ip route PFX/LEN NEXT_HOP | interface IFACE")
+
+    def _ifconf_ip(self, toks):
+        """'ip address 10.0.0.1' — equivalent to 'ipv8 address 0.0.0.0.10.0.0.1'."""
+        if len(toks) >= 3 and toks[1] == "address":
+            v4 = toks[2]
+            try:
+                addr = IPv8Address.from_string(f"0.0.0.0.{v4}")
+            except ValueError as e:
+                self._write(f"% {e}"); return
+            iface = self.device.interfaces[self.current_iface]
+            iface.address = addr
+            if isinstance(self.device, Host):
+                self.device.address = addr
+                self.device.gateway_iface = self.current_iface
+        else:
+            self._write("% usage: ip address X.X.X.X")
+
+    def _ping_ipv4(self, toks):
+        """'ping 10.0.0.1' → internally 'ping8 0.0.0.0.10.0.0.1'."""
+        if len(toks) < 2:
+            self._write("% usage: ping X.X.X.X"); return
+        v4 = toks[1]
+        try:
+            IPv8Address.from_string(f"0.0.0.0.{v4}")
+        except ValueError as e:
+            self._write(f"% {e}"); return
+        self._ping8(["ping8", f"0.0.0.0.{v4}"])
+
     # --- interface config -----------------------------------------------------
     def _ifconf_ipv8(self, toks):
         if len(toks) >= 3 and toks[1] == "address":
@@ -375,9 +439,15 @@ class IOSCLI:
                 return
             if len(toks) >= 3 and toks[2] == "route":
                 self._show_route(); return
+        if len(toks) >= 2 and toks[1] == "ip":
+            if len(toks) >= 3 and toks[2] == "route":
+                self._show_ip_route(); return
+            if len(toks) >= 3 and toks[2] == "interface":
+                self._show_ip_interface(brief=(len(toks) >= 4 and toks[3].startswith("br")))
+                return
         if len(toks) >= 2 and toks[1].startswith("running"):
             self._write(self._running_config()); return
-        self._write(f"% usage: show ipv8 interface|route")
+        self._write(f"% usage: show ipv8 interface|route  |  show ip route|interface")
 
     def _show_iface(self, brief: bool) -> None:
         if brief:
@@ -423,6 +493,53 @@ class IOSCLI:
             r = self.device.rtable.default
             nh = str(r.next_hop) if r.next_hop else "connected"
             self._write(f"  S* default via {nh} dev {r.interface}")
+
+    # --- show ip (IPv4 narrowed view) -----------------------------------------
+    def _show_ip_route(self) -> None:
+        """List only the ASN=0 (IPv4-compat) portion of the routing table."""
+        self._write("Codes: C - connected, S - static")
+        ipv4_ifaces = [
+            (name, iface) for name, iface in self.device.interfaces.items()
+            if iface.address.asn == 0 and iface.address.host != 0
+        ]
+        if not ipv4_ifaces and not self.device.rtable.tier1.get(0):
+            self._write("  (no IPv4 routes)")
+            return
+        for name, iface in ipv4_ifaces:
+            self._write(
+                f"  C  {iface.address.ipv4_string}/32 is directly connected, {name}"
+            )
+        for r in self.device.rtable.tier1.get(0, []):
+            host_ip = ".".join(
+                str((r.host_prefix >> (24 - 8 * i)) & 0xFF) for i in range(4)
+            )
+            if r.next_hop:
+                self._write(
+                    f"  S  {host_ip}/{r.host_prefix_len} [1/0] "
+                    f"via {r.next_hop.ipv4_string}, {r.interface}"
+                )
+            else:
+                self._write(
+                    f"  S  {host_ip}/{r.host_prefix_len} is directly connected, {r.interface}"
+                )
+
+    def _show_ip_interface(self, brief: bool) -> None:
+        if brief:
+            self._write(f"{'Interface':<22s} {'IP-Address':<15s} Status")
+            for name, iface in self.device.interfaces.items():
+                if iface.address.asn != 0:
+                    continue
+                status = "administratively down" if iface.admin_down else "up"
+                ip = iface.address.ipv4_string
+                self._write(f"{name:<22s} {ip:<15s} {status}")
+            return
+        for name, iface in self.device.interfaces.items():
+            if iface.address.asn != 0:
+                continue
+            admin = "administratively down" if iface.admin_down else "up"
+            self._write(f"{name} is {admin}, line protocol is {admin}")
+            self._write(f"  Internet address is {iface.address.ipv4_string}/32")
+            self._write("  IPv4-compat (IPv8 ASN=0 backward compatibility mode)")
 
     def _running_config(self) -> str:
         lines = [f"hostname {self.device.name}", "!"]
