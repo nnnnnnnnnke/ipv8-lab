@@ -11,6 +11,26 @@
   <img src="https://img.shields.io/badge/python-3.9%2B-blue"> <img src="https://img.shields.io/badge/license-MIT-informational">
 </p>
 
+<p align="center">
+  <b><a href="#english">🇬🇧 English</a></b> · <b><a href="#日本語版">🇯🇵 日本語</a></b>
+</p>
+
+---
+
+<a id="english"></a>
+
+## Table of contents
+
+- [What is IPv8?](#what-is-ipv8)
+- [Do I need an AS number?](#do-i-need-an-as-number)
+- [What this repo gives you](#what-this-repo-gives-you)
+- [Quick start](#quick-start)
+- [Configuring a router in Cisco style](#configuring-a-router-in-cisco-style)
+- [Interactive IOS shell](#interactive-ios-shell)
+- [Architecture at a glance](#architecture-at-a-glance)
+- [License](#license)
+- [日本語版 ↓](#日本語版)
+
 ---
 
 ## What is IPv8?
@@ -402,6 +422,26 @@ MIT — see [LICENSE](LICENSE).
 </p>
 
 <h1 align="center">日本語版</h1>
+
+<p align="center">
+  <b><a href="#english">🇬🇧 English</a></b> · <b><a href="#日本語版">🇯🇵 日本語</a></b>
+</p>
+
+---
+
+## 目次
+
+- [IPv8 とは](#ipv8-とは)
+- [AS 番号は必要？](#as-番号は必要)
+- [本リポジトリで出来ること](#本リポジトリで出来ること)
+- [クイックスタート](#クイックスタート)
+- [Cisco 風 CLI でルータを設定する](#cisco-風-cli-でルータを設定する)
+- [対話型 IOS シェル](#対話型-ios-シェル)
+- [アーキテクチャ俯瞰](#アーキテクチャ俯瞰)
+- [ライセンス](#ライセンス)
+- [English ↑](#english)
+
+---
 
 ## IPv8 とは
 
