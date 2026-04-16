@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="assets/logo.png" alt="IPv8 Lab" width="180">
+  <img src="assets/logo.png" alt="IPv8 Lab" width="240">
 </p>
-
-<h1 align="center">IPv8 Lab</h1>
 
 <p align="center">
   A hands-on playground for <a href="https://www.ietf.org/archive/id/draft-thain-ipv8-00.html"><code>draft-thain-ipv8-00</code></a><br>
@@ -254,10 +252,10 @@ MIT — see [LICENSE](LICENSE).
 ---
 
 <p align="center">
-  <img src="assets/logo.png" alt="IPv8 Lab" width="140">
+  <img src="assets/logo.png" alt="IPv8 Lab" width="200">
 </p>
 
-<h1 align="center">IPv8 Lab — 日本語版</h1>
+<h1 align="center">日本語版</h1>
 
 ## IPv8 とは
 
