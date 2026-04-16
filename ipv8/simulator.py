@@ -88,6 +88,7 @@ class Interface:
     name: str
     address: IPv8Address
     link: Optional[Link] = None
+    admin_down: bool = False  # Set to True by the IOS CLI 'shutdown' command.
 
 
 class Node:
@@ -210,6 +211,14 @@ class Router(Node):
         route = self.rtable.lookup(pkt.header.dst)
         if route is None:
             self.trace.log(self.name, "drop", pkt, note="no-route")
+            return
+
+        out_iface = self.interfaces.get(route.interface)
+        if out_iface is not None and out_iface.admin_down:
+            self.trace.log(
+                self.name, "drop", pkt,
+                note=f"egress-admin-down ({route.interface})",
+            )
             return
 
         # Decrement TTL and rebuild checksum by re-packing the packet

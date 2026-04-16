@@ -54,6 +54,12 @@ def main() -> int:
     net, hA, hB, routers, clis = t.build()
     hosts = {h.name: h for h in (hA, hB)}
 
+    # Reset every router to user EXEC so the README "enable → configure" flow
+    # works naturally after attach.  build() ends each router in priv EXEC.
+    for cli in clis.values():
+        cli.mode = "user"
+        cli.current_iface = None
+
     start = sys.argv[1] if len(sys.argv) > 1 else "R1"
     if start not in clis:
         print(f"no such router: {start}")

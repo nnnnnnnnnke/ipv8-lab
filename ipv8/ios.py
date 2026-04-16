@@ -59,9 +59,9 @@ MODE_CONF_IF = "conf-if"
 
 @dataclass
 class _IfaceState:
-    """Metadata the CLI keeps alongside the simulator's interface."""
+    """CLI-visible metadata that shadows Interface.admin_down (source of truth)."""
 
-    shutdown: bool = True
+    shutdown: bool = False
     description: str = ""
 
 
@@ -356,11 +356,13 @@ class IOSCLI:
     def _ifconf_no(self, toks):
         if len(toks) >= 2 and toks[1] == "shutdown":
             self.iface_state[self.current_iface].shutdown = False
+            self.device.interfaces[self.current_iface].admin_down = False
         else:
             self._write(f"% no form not understood: {' '.join(toks)}")
 
     def _ifconf_shutdown(self, toks):
         self.iface_state[self.current_iface].shutdown = True
+        self.device.interfaces[self.current_iface].admin_down = True
 
     def _ifconf_description(self, toks):
         self.iface_state[self.current_iface].description = " ".join(toks[1:])
