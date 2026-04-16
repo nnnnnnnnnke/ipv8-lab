@@ -47,6 +47,44 @@ The draft also defines companion protocols (OSPF8, BGP8, IS-IS8, DHCP8, ICMPv8, 
 
 ---
 
+## Do I need an AS number?
+
+**Short answer**: on paper yes — but `ASN = 0` gives you an escape hatch for pure-IPv4 setups.
+
+An IPv8 address is 64 bits: `r.r.r.r` (32-bit **ASN**) + `n.n.n.n` (32-bit host). The ASN half is the Tier-1 routing key, and that's exactly where IPv8 earns its keep over IPv4 — global tables can aggregate at the AS boundary instead of listing every prefix. No ASN ⇒ no Tier-1 key ⇒ you give up that property.
+
+Three practical options:
+
+| option                           | ASN field                     | when to use                                                    |
+|----------------------------------|-------------------------------|----------------------------------------------------------------|
+| **Public ASN**                   | IANA-assigned (`0.0.251.240` for AS 64496, etc.) | production                                                      |
+| **Private ASN**                  | `65001`–`65534`, or `4.2B`–`4.3B` | internal, labs, testing — this repo uses `65001`–`65005`       |
+| **`ASN = 0`** (IPv4-compat)      | `0.0.0.0`                     | when you have no ASN, or for raw IPv4 interop                  |
+
+### How `ASN = 0` behaves
+
+- Tier 1 lookup is skipped entirely.
+- Routing reduces to standard IPv4 longest-prefix match.
+- In the IOS shell: `ipv8 address 0.0.0.0.192.168.1.1` turns an interface into plain IPv4.
+- This is the path exercised by XLATE8 and the live FRR interop tests.
+
+### ASN values this lab uses
+
+```
+65001  → 0.0.253.233   R1
+65002  → 0.0.253.234   R2
+65003  → 0.0.253.235   R3
+65004  → 0.0.253.236   R4
+65005  → 0.0.253.237   R5
+65533  → 0.0.255.253   documentation ASN (reserved by the draft)
+65534  → 0.0.255.254   private-BGP ASN (reserved by the draft)
+0      → 0.0.0.0       IPv4-compat
+```
+
+> **Bottom line** — `ASN = 0` keeps IPv8 usable for organisations without their own AS. But to get IPv8's actual benefit (AS-aggregated routing) you need *some* ASN, even a private one.
+
+---
+
 ## What this repo gives you
 
 - **`ipv8/`** — pure-Python reference implementation (no third-party deps)
@@ -415,6 +453,44 @@ MIT — see [LICENSE](LICENSE).
 ルーティングは **二階層構造** で、Tier 1 は `r.r.r.r` による厳密一致、Tier 2 は `n.n.n.n` に対する最長一致です。`r.r.r.r == 0.0.0.0` のときは Tier 1 をスキップし、既存の IPv4 ルーティング表がそのまま適用されるため、IPv4 と共存できます。
 
 ドラフトには OSPF8、BGP8、IS-IS8、DHCP8、ICMPv8、ARP8、DNS8（`A8` レコード）、XLATE8、NetLog8 などの補助プロトコルも含まれます。本リポジトリは **データプレーン部分（IPv8 / ICMPv8 / XLATE8 / 二階層ルーティング）を実装**し、Cisco 風 CLI で設定できる形にしています。
+
+---
+
+## AS 番号は必要？
+
+**結論**: 仕様上は必要。ただし `ASN = 0` が用意されており、純 IPv4 用途では逃げられます。
+
+IPv8 アドレス 64 bit は `r.r.r.r`（32 bit **ASN**）+ `n.n.n.n`（32 bit ホスト）で構成されます。ASN 部は **Tier 1 ルーティングの鍵** であり、IPv8 が IPv4 に対して持つ最大の優位（AS 境界でルート集約できる）のための情報そのものです。ASN を与えない＝ Tier 1 鍵を持たない＝ IPv8 のメリットを捨てる、ということになります。
+
+3 つの実用的な選択肢：
+
+| 方式                              | ASN 値                                | 使いどころ                                                   |
+|-----------------------------------|---------------------------------------|--------------------------------------------------------------|
+| **公式 ASN**                      | IANA 割当（例: AS 64496 → `0.0.251.240`） | 本番運用                                                      |
+| **プライベート ASN**              | `65001`〜`65534` / `4.2B`〜`4.3B`     | 社内・検証・本ラボ（`65001`〜`65005` を使用）                |
+| **`ASN = 0`**（IPv4-compat）      | `0.0.0.0`                             | AS を持たない／持ちたくないケース、純 IPv4 との混在           |
+
+### `ASN = 0` の動作
+
+- Tier 1 ルックアップをスキップ
+- ルーティングは IPv4 と同等（最長一致のみ）
+- IOS シェルで `ipv8 address 0.0.0.0.192.168.1.1` とすれば IPv4-only インターフェースに
+- XLATE8 試験および実 FRR 相互運用試験が通るのはこの経路
+
+### 本ラボで使っている ASN 値
+
+```
+65001  → 0.0.253.233   R1
+65002  → 0.0.253.234   R2
+65003  → 0.0.253.235   R3
+65004  → 0.0.253.236   R4
+65005  → 0.0.253.237   R5
+65533  → 0.0.255.253   ドキュメント用 ASN（draft の予約）
+65534  → 0.0.255.254   プライベート BGP 用 ASN（draft の予約）
+0      → 0.0.0.0       IPv4-compat
+```
+
+> **要点** — `ASN = 0` のおかげで「AS を持たない組織が IPv8 を使えない」という事態は避けられます。ただし IPv8 本来の恩恵（AS 単位の集約ルーティング）を得るには何らかの ASN（プライベートでも可）が必要です。
 
 ---
 
