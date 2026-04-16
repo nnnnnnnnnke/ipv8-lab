@@ -109,6 +109,12 @@ class Node:
     def _send_on(self, iface_name: str, packet: IPv8Packet) -> None:
         iface = self.interfaces[iface_name]
         assert iface.link is not None
+        if iface.admin_down:
+            self.trace.log(
+                self.name, "drop", packet,
+                note=f"egress-admin-down ({iface_name})",
+            )
+            return
         key = f"{self.name}/{iface_name}"
         iface.link.deliver(key, packet.to_bytes())
 
@@ -274,6 +280,18 @@ class Network:
                         frame = q.popleft()
                         node = link.endpoints[key]
                         iface_name = key.split("/", 1)[1]
+                        iface = node.interfaces.get(iface_name)
+                        if iface is not None and iface.admin_down:
+                            try:
+                                pkt = IPv8Packet.from_bytes(frame)
+                            except ValueError:
+                                pkt = _stub_packet()
+                            self.trace.log(
+                                node.name, "drop", pkt,
+                                note=f"ingress-admin-down ({iface_name})",
+                            )
+                            any_delivered = True
+                            continue
                         if isinstance(node, Host):
                             node.receive(frame)
                         elif isinstance(node, Router):
