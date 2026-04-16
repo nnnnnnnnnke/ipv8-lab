@@ -1,0 +1,67 @@
+name: ipv8-interop-multi
+
+# Topology:
+#
+#   hostA (198.20.1.10)
+#        |
+#      netA (198.20.1.0/24)
+#        |
+#   [eth0] frr1 [eth1] --- netAB (198.20.12.0/24) --- [eth1] frr2 [eth0]
+#          AS 65101                                          AS 65102
+#                                                              |
+#                                                            netB (198.20.2.0/24)
+#                                                              |
+#                                                         hostB (198.20.2.10)
+#
+# frr1 and frr2 establish an eBGP session over netAB and redistribute the
+# hostA/hostB subnets.  Traffic between hostA and hostB therefore traverses
+# TWO real FRR routers, exercising multi-hop IPv4 compatibility for our
+# XLATE8 library.
+
+services:
+  frr1:
+    image: frrouting/frr:latest
+    container_name: ipv8m-frr1
+    cap_add: [NET_ADMIN, SYS_ADMIN, NET_RAW]
+    privileged: true
+    networks:
+      netA:  { ipv4_address: 198.20.1.2 }
+      netAB: { ipv4_address: 198.20.12.3 }
+    volumes:
+      - ./frr1/frr.conf:/etc/frr/frr.conf:ro
+      - ./frr1/daemons:/etc/frr/daemons:ro
+    command: sh -c "sysctl -w net.ipv4.ip_forward=1 && /usr/lib/frr/docker-start"
+
+  frr2:
+    image: frrouting/frr:latest
+    container_name: ipv8m-frr2
+    cap_add: [NET_ADMIN, SYS_ADMIN, NET_RAW]
+    privileged: true
+    networks:
+      netB:  { ipv4_address: 198.20.2.2 }
+      netAB: { ipv4_address: 198.20.12.4 }
+    volumes:
+      - ./frr2/frr.conf:/etc/frr/frr.conf:ro
+      - ./frr2/daemons:/etc/frr/daemons:ro
+    command: sh -c "sysctl -w net.ipv4.ip_forward=1 && /usr/lib/frr/docker-start"
+
+  hostA:
+    image: nicolaka/netshoot:latest
+    container_name: ipv8m-hostA
+    cap_add: [NET_ADMIN, NET_RAW]
+    networks:
+      netA: { ipv4_address: 198.20.1.10 }
+    command: sh -c "ip route replace default via 198.20.1.2 && sleep infinity"
+
+  hostB:
+    image: nicolaka/netshoot:latest
+    container_name: ipv8m-hostB
+    cap_add: [NET_ADMIN, NET_RAW]
+    networks:
+      netB: { ipv4_address: 198.20.2.10 }
+    command: sh -c "ip route replace default via 198.20.2.2 && sleep infinity"
+
+networks:
+  netA:  { driver: bridge, ipam: { config: [{ subnet: 198.20.1.0/24 }] } }
+  netB:  { driver: bridge, ipam: { config: [{ subnet: 198.20.2.0/24 }] } }
+  netAB: { driver: bridge, ipam: { config: [{ subnet: 198.20.12.0/24 }] } }

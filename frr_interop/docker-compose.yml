@@ -1,0 +1,49 @@
+name: ipv8-interop
+
+services:
+  frr:
+    image: frrouting/frr:latest
+    container_name: ipv8-frr
+    cap_add: [NET_ADMIN, SYS_ADMIN, NET_RAW]
+    privileged: true
+    networks:
+      netA:
+        ipv4_address: 198.19.1.2
+      netB:
+        ipv4_address: 198.19.2.2
+    volumes:
+      - ./etc_frr/frr.conf:/etc/frr/frr.conf:ro
+      - ./etc_frr/daemons:/etc/frr/daemons:ro
+    command: >
+      sh -c "sysctl -w net.ipv4.ip_forward=1 &&
+             /usr/lib/frr/docker-start"
+
+  hostA:
+    image: nicolaka/netshoot:latest
+    container_name: ipv8-hostA
+    cap_add: [NET_ADMIN, NET_RAW]
+    networks:
+      netA: { ipv4_address: 198.19.1.10 }
+    command: >
+      sh -c "ip route replace 198.19.2.0/24 via 198.19.1.2 &&
+             sleep infinity"
+
+  hostB:
+    image: nicolaka/netshoot:latest
+    container_name: ipv8-hostB
+    cap_add: [NET_ADMIN, NET_RAW]
+    networks:
+      netB: { ipv4_address: 198.19.2.10 }
+    command: >
+      sh -c "ip route replace 198.19.1.0/24 via 198.19.2.2 &&
+             sleep infinity"
+
+networks:
+  netA:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 198.19.1.0/24 }]
+  netB:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 198.19.2.0/24 }]
