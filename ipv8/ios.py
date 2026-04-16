@@ -503,7 +503,8 @@ class IOSCLI:
             if iface.address.asn == 0 and iface.address.host != 0
         ]
         if not ipv4_ifaces and not self.device.rtable.tier1.get(0):
-            self._write("  (no IPv4 routes)")
+            self._write("  (no IPv4 routes — this device has only native")
+            self._write("   IPv8 routes; use 'show ipv8 route' instead)")
             return
         for name, iface in ipv4_ifaces:
             self._write(
@@ -524,22 +525,40 @@ class IOSCLI:
                 )
 
     def _show_ip_interface(self, brief: bool) -> None:
-        if brief:
-            self._write(f"{'Interface':<22s} {'IP-Address':<15s} Status")
-            for name, iface in self.device.interfaces.items():
-                if iface.address.asn != 0:
-                    continue
-                status = "administratively down" if iface.admin_down else "up"
-                ip = iface.address.ipv4_string
-                self._write(f"{name:<22s} {ip:<15s} {status}")
+        if not self.device.interfaces:
+            self._write("(no interfaces)")
             return
+        if brief:
+            self._write(
+                f"{'Interface':<22s} {'IP-Address':<18s} {'OK?':<4s} {'Method':<8s} Status"
+            )
+            for name, iface in self.device.interfaces.items():
+                admin = "administratively down" if iface.admin_down else "up"
+                if iface.address.asn == 0 and iface.address.host != 0:
+                    ip = iface.address.ipv4_string
+                    ok, method, status = "YES", "manual", admin
+                elif iface.address.asn != 0:
+                    ip = "unassigned"
+                    ok, method = "NO", "—"
+                    status = f"{admin}  (IPv8 native ASN {iface.address.asn})"
+                else:
+                    ip, ok, method, status = "unassigned", "NO", "—", admin
+                self._write(f"{name:<22s} {ip:<18s} {ok:<4s} {method:<8s} {status}")
+            return
+        # Long form
         for name, iface in self.device.interfaces.items():
-            if iface.address.asn != 0:
-                continue
             admin = "administratively down" if iface.admin_down else "up"
             self._write(f"{name} is {admin}, line protocol is {admin}")
-            self._write(f"  Internet address is {iface.address.ipv4_string}/32")
-            self._write("  IPv4-compat (IPv8 ASN=0 backward compatibility mode)")
+            if iface.address.asn == 0 and iface.address.host != 0:
+                self._write(f"  Internet address is {iface.address.ipv4_string}/32")
+                self._write("  IPv4-compat (IPv8 ASN=0 backward compatibility mode)")
+            elif iface.address.asn != 0:
+                self._write(
+                    f"  No IPv4 address (native IPv8 address "
+                    f"{iface.address} assigned — see 'show ipv8 interface')"
+                )
+            else:
+                self._write("  Internet protocol processing disabled")
 
     def _running_config(self) -> str:
         lines = [f"hostname {self.device.name}", "!"]
