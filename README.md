@@ -283,6 +283,14 @@ ping from hostB to 0.0.253.233.10.1.1.10  ! reverse end-to-end
 quit
 ```
 
+**What this confirms**
+
+| block | what you observe |
+|---|---|
+| *Phase 1 — inspect R1* | `show ipv8 route` prints the two-tier table (connected + 4 static to other ASNs); `ping8` returns `!!!!!` (5/5); `show trace` shows TTL decrementing `64→63→62→61→60→59` across the five routers plus the echo-reply coming back the same way — **bidirectional reachability and per-hop TTL are correct** |
+| *Phase 2 — configure R3* | mode hierarchy (`user → priv → config → config-if`) behaves like IOS; `attach` proves **each router holds its own independent config**; the new static route appears in `show running-config` verbatim; `no ipv8 route …` removes it dynamically |
+| *Phase 3 — rename + reverse* | `hostname` takes effect immediately (prompt changes to `EdgeRouter5#`); `ping from hostB` succeeds, proving **symmetric routing** in both directions |
+
 ### Break-and-recover pattern
 
 ```
@@ -301,6 +309,12 @@ interface Gig0/1
 ping from hostA to 0.0.253.237.10.5.1.20  ! reachable again
 ```
 
+**What this confirms**
+
+- `shutdown` on the R3→R4 link makes the next packet drop with `"no-route"` in `show trace` — **forwarding actually consults the admin state of the outgoing interface**
+- `no shutdown` restores reachability without any additional config — the static route installed on R3 was never withdrawn, just the egress link came back
+- Trace shows the **failed** packet ends at R3 (`drop no-route`) while the **recovered** packet walks the full 5-hop path — useful for visualising blackholes
+
 ### Adding IPv4-compat (ASN=0) routing
 
 ```
@@ -314,6 +328,12 @@ ipv8 route 0.0.0.0.0.0.0.0/0 interface Gig0/0
 end
 show ipv8 route                             ! an ASN-0 bucket now appears
 ```
+
+**What this confirms**
+
+- The same router can host **native IPv8 interfaces and `ASN = 0` IPv4-compat interfaces simultaneously**
+- `show ipv8 route` lists two top-level ASN buckets — the original `65001` and a new `0` — demonstrating that Tier 1 lookup continues to work while `ASN = 0` takes the IPv4 short-circuit
+- No restart / reload is required; the reconfiguration is live, just like on a real IOS device
 
 > When in doubt, `routers`, `hosts`, and `show trace` together always tell you where you are and what's happening.
 
@@ -630,6 +650,14 @@ ping from hostB to 0.0.253.233.10.1.1.10  ! 逆方向の end-to-end
 quit
 ```
 
+**このツアーで確認できること**
+
+| ブロック | 観察できる内容 |
+|---|---|
+| *Phase 1 — R1 を観察* | `show ipv8 route` が二階層表（connected + 他 4 AS への static）を表示。`ping8` が `!!!!!` (5/5) で応答。`show trace` で TTL が `64→63→62→61→60→59` と **ルータ毎に 1 減算** し、echo reply も逆順で戻る ＝ **双方向疎通と TTL 減算が正しい** |
+| *Phase 2 — R3 を設定* | モード階層（`user → priv → config → config-if`）が IOS 準拠で動く。`attach` で各ルータが **独立した設定を保持** していることを確認。追加した static route は `show running-config` に入力通り表示。`no ipv8 route …` で動的削除も可能 |
+| *Phase 3 — 改名と逆方向* | `hostname` が即座にプロンプトへ反映（`EdgeRouter5#`）。`ping from hostB` が通り、**逆方向も対称に疎通** していることを確認 |
+
 ### 壊して直すパターン
 
 ```
@@ -648,6 +676,12 @@ interface Gig0/1
 ping from hostA to 0.0.253.237.10.5.1.20  ! 復旧
 ```
 
+**確認できること**
+
+- R3 の R3→R4 側リンクを `shutdown` すると次のパケットが `show trace` で `"no-route"` となり落ちる ＝ **送出 IF の admin 状態がフォワーディングに反映される**
+- `no shutdown` だけで復旧。static route を書き直す必要は無く、**egress リンクの復活のみで到達性が戻る**
+- トレース上、失敗パケットは R3 で `drop no-route`、復旧後のパケットは 5 ホップ通しで到達。**ブラックホール発生〜解消の可視化** に使える
+
 ### IPv4 下位互換（ASN=0）経路を追加
 
 ```
@@ -661,6 +695,12 @@ ipv8 route 0.0.0.0.0.0.0.0/0 interface Gig0/0
 end
 show ipv8 route                             ! ASN 0 のバケットが現れる
 ```
+
+**確認できること**
+
+- 1 台のルータが **ネイティブ IPv8 と `ASN = 0` の IPv4-compat を同居** できる
+- `show ipv8 route` に ASN バケットが 2 つ（元の `65001` と新しい `0`）並び、Tier 1 ルックアップが機能したまま `ASN = 0` だけ IPv4 短絡経路を使う動きを確認できる
+- 再起動・リロード不要で **設定が即時反映** される（実機 IOS と同じ挙動）
 
 > 迷ったら `routers` / `hosts` / `show trace` の 3 つで現状を確認できます。
 
