@@ -195,147 +195,163 @@ Success rate is 100 percent (5/5)
 
 ## Interactive IOS shell
 
-`ios_shell.py` is a Cisco-IOS-flavoured REPL attached to a **pre-built 5-router topology**, so you can experiment without writing any Python.
+`ios_shell.py` drops you into a Cisco-IOS-flavoured REPL over an **empty, router-only network**. You add routers, connect them with links, assign any IPv8 address you like, install static routes, and ping — entirely at the prompt.
 
 ### Starting it
 
 ```sh
-python3 ios_shell.py          # start on R1
-python3 ios_shell.py R3       # start already attached to R3
+python3 ios_shell.py
 ```
 
-Or drop these aliases into your `~/.zshrc` / `~/.bashrc` for one-word access:
+Or add this alias to your `~/.zshrc` / `~/.bashrc`:
 
 ```sh
 export IPV8_LAB_HOME="$HOME/ipv8-lab"
 alias ipv8lab='python3 "$IPV8_LAB_HOME/ios_shell.py"'
-alias ipv8lab-demo='python3 "$IPV8_LAB_HOME/demos/05_five_routers_cli.py"'
 ```
-
-### Pre-built topology
-
-```
-hostA ─ linkA ─ R1 ─ link12 ─ R2 ─ link23 ─ R3 ─ link34 ─ R4 ─ link45 ─ R5 ─ linkB ─ hostB
-10.1.1.10      (AS 65001)   (AS 65002)   (AS 65003)   (AS 65004)   (AS 65005)    10.5.1.20
-              0.0.253.233  0.0.253.234  0.0.253.235  0.0.253.236  0.0.253.237
-```
-
-- **Hosts**: `hostA` (`0.0.253.233.10.1.1.10`), `hostB` (`0.0.253.237.10.5.1.20`)
-- **Routers**: R1…R5, each with two `GigabitEthernet` interfaces (`Gig0/0` upstream, `Gig0/1` downstream)
-- **Routing**: every router ships with four static routes — one per remote ASN — and connected routes for its own /24s
 
 ### Meta commands (shell-only, not real IOS)
 
-| command                                    | effect                                                      |
-|--------------------------------------------|-------------------------------------------------------------|
-| `attach R1` … `attach R5`                  | switch console to another router                            |
-| `routers`                                  | list routers + interface addresses                          |
-| `hosts`                                    | list hostA / hostB addresses                                |
-| `show trace`                               | tcpdump-style log of every packet sent in the sim so far    |
-| `clear trace`                              | reset the trace buffer                                      |
-| `ping from hostA to <ADDR>`                | ping from a *host*, not a router                            |
-| `ping from hostA to <ADDR> <id> <seq>`     | same with explicit ICMP id / sequence                       |
-| `quit` / `:q`                              | leave the shell (works from any IOS mode)                   |
+| command                                          | effect                                                                |
+|--------------------------------------------------|-----------------------------------------------------------------------|
+| `router add <NAME>`                              | create a router (auto-attach)                                         |
+| `router remove <NAME>`                           | delete a router and detach its links                                  |
+| `link add <LINK> <Ra>:<Ifa> <Rb>:<Ifb>`          | create a link and interfaces on both routers                          |
+| `link remove <LINK>`                             | tear down a link and remove the attached interfaces                   |
+| `attach <NAME>`                                  | switch console to another router (starts in user EXEC each time)      |
+| `routers`                                        | list routers + each interface's address and admin state               |
+| `links`                                          | list links + their endpoints                                          |
+| `show trace`                                     | tcpdump-style log of every packet in the sim                          |
+| `clear trace`                                    | reset the trace buffer                                                |
+| `help-meta` / `?`                                | print the meta-command reference                                      |
+| `quit` / `:q`                                    | leave the shell                                                       |
 
-Everything else is forwarded to the Cisco CLI documented above.
+Everything else is forwarded to the Cisco CLI (see *Command Reference* above).
 
 ### Mode transitions (standard IOS)
 
 ```
 user EXEC  ─ enable            →  priv EXEC
 priv EXEC  ─ configure terminal→  global config
-config     ─ interface Gig0/0  →  interface config
+config     ─ interface <IFACE> →  interface config
 config-if  ─ exit              →  global config
 config     ─ end               →  priv EXEC
 priv EXEC  ─ disable           →  user EXEC
 ```
 
-### Quick tour — copy-paste session
+### Quick tour — build a 3-router chain from scratch
 
 ```
-routers
-hosts
+router add R1
+router add R2
+router add R3
+
+link add L12 R1:Gig0/0 R2:Gig0/0
+link add L23 R2:Gig0/1 R3:Gig0/0
+
+attach R1
 enable
-show ipv8 route
-ping8 0.0.253.237.10.5.1.1                ! router-to-router, 5 hops
-clear trace
-ping from hostA to 0.0.253.237.10.5.1.20  ! edge-to-edge ping
-show trace                                 ! TTL 64→59 round-trip visible
+configure terminal
+interface Gig0/0
+ ipv8 address 0.0.253.233.10.12.0.1        ! R1 side of L12
+ no shutdown
+ exit
+ipv8 route 0.0.253.234.0.0.0.0/0 0.0.253.233.10.12.0.2
+ipv8 route 0.0.253.235.0.0.0.0/0 0.0.253.233.10.12.0.2
+end
+
+attach R2
+enable
+configure terminal
+interface Gig0/0
+ ipv8 address 0.0.253.234.10.12.0.2
+ no shutdown
+ exit
+interface Gig0/1
+ ipv8 address 0.0.253.234.10.23.0.1
+ no shutdown
+ exit
+ipv8 route 0.0.253.233.0.0.0.0/0 0.0.253.234.10.12.0.1
+ipv8 route 0.0.253.235.0.0.0.0/0 0.0.253.234.10.23.0.2
+end
 
 attach R3
 enable
 configure terminal
 interface Gig0/0
- description link-toward-R2
+ ipv8 address 0.0.253.235.10.23.0.2
+ no shutdown
  exit
-ipv8 route 0.0.253.240.0.0.0.0/0 0.0.253.235.10.23.0.1
-end
-show running-config
-no ipv8 route 0.0.253.240.0.0.0.0/0
+ipv8 route 0.0.253.233.0.0.0.0/0 0.0.253.235.10.23.0.1
+ipv8 route 0.0.253.234.0.0.0.0/0 0.0.253.235.10.23.0.1
 end
 
-attach R5
+attach R1
 enable
-configure terminal
-hostname EdgeRouter5                      ! prompt updates immediately
-end
-ping from hostB to 0.0.253.233.10.1.1.10  ! reverse end-to-end
-quit
+ping8 0.0.253.235.10.23.0.2                ! R1 → R3, 2 hops
+show trace
 ```
 
 **What this confirms**
 
 | block | what you observe |
 |---|---|
-| *Phase 1 — inspect R1* | `show ipv8 route` prints the two-tier table (connected + 4 static to other ASNs); `ping8` returns `!!!!!` (5/5); `show trace` shows TTL decrementing `64→63→62→61→60→59` across the five routers plus the echo-reply coming back the same way — **bidirectional reachability and per-hop TTL are correct** |
-| *Phase 2 — configure R3* | mode hierarchy (`user → priv → config → config-if`) behaves like IOS; `attach` proves **each router holds its own independent config**; the new static route appears in `show running-config` verbatim; `no ipv8 route …` removes it dynamically |
-| *Phase 3 — rename + reverse* | `hostname` takes effect immediately (prompt changes to `EdgeRouter5#`); `ping from hostB` succeeds, proving **symmetric routing** in both directions |
+| *router add / link add* | `routers` and `links` show the new objects and the placeholder `0.0.0.0.0.0.0.0` address assigned on each freshly-created interface |
+| *interface config* | `ipv8 address` accepts any 64-bit address you type — use any private ASN (e.g. `0.0.253.233` = 65001) or `0.0.0.0` for IPv4-compat |
+| *static routes* | after config you get `!!!!!` 100 % from `ping8` and `show trace` prints the full R1 → R2 → R3 round-trip with per-hop TTL decrement |
 
 ### Break-and-recover pattern
 
 ```
-attach R3
+attach R2
 enable
 configure terminal
 interface Gig0/1
- shutdown                                  ! rip the R3—R4 link
+ shutdown
  end
 clear trace
-ping from hostA to 0.0.253.237.10.5.1.20  ! dropped with "no-route"
+ping8 0.0.253.235.10.23.0.2                ! now drops at R2
+
 configure terminal
 interface Gig0/1
  no shutdown
  end
-ping from hostA to 0.0.253.237.10.5.1.20  ! reachable again
+ping8 0.0.253.235.10.23.0.2                ! reachable again
 ```
 
 **What this confirms**
 
-- `shutdown` on the R3→R4 link makes the next packet drop with `"no-route"` in `show trace` — **forwarding actually consults the admin state of the outgoing interface**
-- `no shutdown` restores reachability without any additional config — the static route installed on R3 was never withdrawn, just the egress link came back
-- Trace shows the **failed** packet ends at R3 (`drop no-route`) while the **recovered** packet walks the full 5-hop path — useful for visualising blackholes
+- `shutdown` sets `Interface.admin_down=True` and the simulator's forwarder drops the next packet with `egress-admin-down (Gig0/1)` in the trace
+- `no shutdown` restores reachability without touching the routing table — static routes remained installed throughout
+- The failure trace stops at the router that owns the dead interface, making blackholes easy to spot
 
-### Adding IPv4-compat (ASN=0) routing
+### Adding IPv4-compat (ASN = 0) alongside native IPv8
+
+Re-attach to R1 (still configured from the Quick tour) and graft a second, IPv4-compat interface:
 
 ```
+router add R4
+link add L14 R1:Gig0/1 R4:Gig0/0
+
 attach R1
 enable
 configure terminal
-interface Gig0/0
- ipv8 address 0.0.0.0.192.168.1.1          ! re-address under ASN=0
+interface Gig0/1
+ ipv8 address 0.0.0.0.192.168.1.1          ! ASN=0 edge
+ no shutdown
  exit
-ipv8 route 0.0.0.0.0.0.0.0/0 interface Gig0/0
+ipv8 route 0.0.0.0.0.0.0.0/0 0.0.0.0.192.168.1.2
 end
-show ipv8 route                             ! an ASN-0 bucket now appears
+show ipv8 route                             ! ASN 0 bucket alongside ASN 65001
 ```
 
 **What this confirms**
 
-- The same router can host **native IPv8 interfaces and `ASN = 0` IPv4-compat interfaces simultaneously**
-- `show ipv8 route` lists two top-level ASN buckets — the original `65001` and a new `0` — demonstrating that Tier 1 lookup continues to work while `ASN = 0` takes the IPv4 short-circuit
-- No restart / reload is required; the reconfiguration is live, just like on a real IOS device
+- A single router can carry **native IPv8 interfaces and `ASN = 0` IPv4-compat interfaces at the same time**
+- `show ipv8 route` lists two ASN buckets — `0` and `65001` — demonstrating that Tier 1 lookup works for the real ASN and is bypassed (IPv4 semantics) for `ASN = 0`
+- Reconfiguration is live; no reload needed
 
-> When in doubt, `routers`, `hosts`, and `show trace` together always tell you where you are and what's happening.
+> When in doubt, `routers`, `links`, and `show trace` together always tell you what's going on.
 
 ---
 
@@ -562,13 +578,12 @@ Success rate is 100 percent (5/5)
 
 ## 対話型 IOS シェル
 
-`ios_shell.py` は Cisco IOS 風の対話シェルで、**5 台構成のトポロジが起動時点で既に組み上がっている** ため Python を書かずにそのまま実験できます。
+`ios_shell.py` は Cisco IOS 風の対話シェルで、**空（router ゼロ台）の状態から始まり**、ルータを足す・リンクを張る・任意の IPv8 アドレスを割り当てる・ping を打つ、までプロンプト上で完結します。
 
 ### 起動
 
 ```sh
-python3 ios_shell.py          # R1 に接続して起動
-python3 ios_shell.py R3       # 起動時から R3 に attach
+python3 ios_shell.py
 ```
 
 `~/.zshrc` / `~/.bashrc` に以下のエイリアスを入れると一語で叩けます：
@@ -576,33 +591,23 @@ python3 ios_shell.py R3       # 起動時から R3 に attach
 ```sh
 export IPV8_LAB_HOME="$HOME/ipv8-lab"
 alias ipv8lab='python3 "$IPV8_LAB_HOME/ios_shell.py"'
-alias ipv8lab-demo='python3 "$IPV8_LAB_HOME/demos/05_five_routers_cli.py"'
 ```
-
-### プリビルト構成
-
-```
-hostA ─ linkA ─ R1 ─ link12 ─ R2 ─ link23 ─ R3 ─ link34 ─ R4 ─ link45 ─ R5 ─ linkB ─ hostB
-10.1.1.10      (AS 65001)   (AS 65002)   (AS 65003)   (AS 65004)   (AS 65005)    10.5.1.20
-              0.0.253.233  0.0.253.234  0.0.253.235  0.0.253.236  0.0.253.237
-```
-
-- **ホスト**: `hostA` (`0.0.253.233.10.1.1.10`)、`hostB` (`0.0.253.237.10.5.1.20`)
-- **ルータ**: R1〜R5、各 `GigabitEthernet` 2 口（`Gig0/0` 上流、`Gig0/1` 下流）
-- **経路**: 各ルータに他 4 AS 向けの static route と自 /24 の接続経路が事前設定済
 
 ### 対話版限定コマンド（IOS には無い）
 
-| コマンド                                    | 動作                                                  |
-|---------------------------------------------|-------------------------------------------------------|
-| `attach R1` 〜 `attach R5`                  | コンソールを他ルータへ切替                            |
-| `routers`                                   | 全ルータとインターフェースアドレスを一覧              |
-| `hosts`                                     | hostA / hostB のアドレス表示                          |
-| `show trace`                                | これまでの全パケットを tcpdump 風に表示                |
-| `clear trace`                               | トレースをクリア                                      |
-| `ping from hostA to <ADDR>`                 | **ルータでなくホスト発** の ping                      |
-| `ping from hostA to <ADDR> <id> <seq>`      | 識別子・シーケンス番号も指定                          |
-| `quit` / `:q`                               | シェル終了（どのモードでも）                          |
+| コマンド                                          | 動作                                                                 |
+|---------------------------------------------------|----------------------------------------------------------------------|
+| `router add <NAME>`                               | ルータ新規作成（自動 attach）                                         |
+| `router remove <NAME>`                            | ルータ削除（紐付く IF も切断）                                        |
+| `link add <LINK> <Ra>:<Ifa> <Rb>:<Ifb>`           | リンク作成、両端に IF も自動生成                                      |
+| `link remove <LINK>`                              | リンク撤去（両端の IF も削除）                                        |
+| `attach <NAME>`                                   | コンソールを他ルータへ切替（毎回 user EXEC から）                     |
+| `routers`                                         | ルータと各 IF の アドレス／admin 状態を一覧                            |
+| `links`                                           | リンクと両端エンドポイントを一覧                                      |
+| `show trace`                                      | これまでの全パケットを tcpdump 風に表示                               |
+| `clear trace`                                     | トレースをクリア                                                      |
+| `help-meta` / `?`                                 | メタコマンド早見表                                                    |
+| `quit` / `:q`                                     | シェル終了                                                            |
 
 その他は全て Cisco CLI へ素通し（上の Command Reference を参照）。
 
@@ -611,98 +616,125 @@ hostA ─ linkA ─ R1 ─ link12 ─ R2 ─ link23 ─ R3 ─ link34 ─ R4 ─
 ```
 user EXEC  ─ enable            →  priv EXEC
 priv EXEC  ─ configure terminal→  global config
-config     ─ interface Gig0/0  →  interface config
+config     ─ interface <IFACE> →  interface config
 config-if  ─ exit              →  global config
 config     ─ end               →  priv EXEC
 priv EXEC  ─ disable           →  user EXEC
 ```
 
-### コピペで試せるセッション
+### コピペで試せるセッション（3 台直列を一から組む）
 
 ```
-routers
-hosts
+router add R1
+router add R2
+router add R3
+
+link add L12 R1:Gig0/0 R2:Gig0/0
+link add L23 R2:Gig0/1 R3:Gig0/0
+
+attach R1
 enable
-show ipv8 route
-ping8 0.0.253.237.10.5.1.1                ! ルータ間 ping、5 ホップ
-clear trace
-ping from hostA to 0.0.253.237.10.5.1.20  ! エッジ→エッジ ping
-show trace                                 ! TTL 64→59 の往復が見える
+configure terminal
+interface Gig0/0
+ ipv8 address 0.0.253.233.10.12.0.1        ! R1 側の L12
+ no shutdown
+ exit
+ipv8 route 0.0.253.234.0.0.0.0/0 0.0.253.233.10.12.0.2
+ipv8 route 0.0.253.235.0.0.0.0/0 0.0.253.233.10.12.0.2
+end
+
+attach R2
+enable
+configure terminal
+interface Gig0/0
+ ipv8 address 0.0.253.234.10.12.0.2
+ no shutdown
+ exit
+interface Gig0/1
+ ipv8 address 0.0.253.234.10.23.0.1
+ no shutdown
+ exit
+ipv8 route 0.0.253.233.0.0.0.0/0 0.0.253.234.10.12.0.1
+ipv8 route 0.0.253.235.0.0.0.0/0 0.0.253.234.10.23.0.2
+end
 
 attach R3
 enable
 configure terminal
 interface Gig0/0
- description link-toward-R2
+ ipv8 address 0.0.253.235.10.23.0.2
+ no shutdown
  exit
-ipv8 route 0.0.253.240.0.0.0.0/0 0.0.253.235.10.23.0.1
-end
-show running-config
-no ipv8 route 0.0.253.240.0.0.0.0/0
+ipv8 route 0.0.253.233.0.0.0.0/0 0.0.253.235.10.23.0.1
+ipv8 route 0.0.253.234.0.0.0.0/0 0.0.253.235.10.23.0.1
 end
 
-attach R5
+attach R1
 enable
-configure terminal
-hostname EdgeRouter5                      ! プロンプトが即座に反映
-end
-ping from hostB to 0.0.253.233.10.1.1.10  ! 逆方向の end-to-end
-quit
+ping8 0.0.253.235.10.23.0.2                ! R1 → R3、2 ホップ
+show trace
 ```
 
 **このツアーで確認できること**
 
 | ブロック | 観察できる内容 |
 |---|---|
-| *Phase 1 — R1 を観察* | `show ipv8 route` が二階層表（connected + 他 4 AS への static）を表示。`ping8` が `!!!!!` (5/5) で応答。`show trace` で TTL が `64→63→62→61→60→59` と **ルータ毎に 1 減算** し、echo reply も逆順で戻る ＝ **双方向疎通と TTL 減算が正しい** |
-| *Phase 2 — R3 を設定* | モード階層（`user → priv → config → config-if`）が IOS 準拠で動く。`attach` で各ルータが **独立した設定を保持** していることを確認。追加した static route は `show running-config` に入力通り表示。`no ipv8 route …` で動的削除も可能 |
-| *Phase 3 — 改名と逆方向* | `hostname` が即座にプロンプトへ反映（`EdgeRouter5#`）。`ping from hostB` が通り、**逆方向も対称に疎通** していることを確認 |
+| *router add / link add* | `routers` / `links` で作成物を確認。新しい IF には仮アドレス `0.0.0.0.0.0.0.0` が入る |
+| *interface 設定* | `ipv8 address` は **任意の 64-bit アドレス** を受け付ける（private ASN、IPv4-compat の ASN=0 など自由） |
+| *static route* | 設定完了後 `ping8` が `!!!!!` (100%)、`show trace` で R1 → R2 → R3 の往復が per-hop TTL 減算付きで確認できる |
 
 ### 壊して直すパターン
 
 ```
-attach R3
+attach R2
 enable
 configure terminal
 interface Gig0/1
- shutdown                                  ! R3—R4 間リンクを落とす
+ shutdown
  end
 clear trace
-ping from hostA to 0.0.253.237.10.5.1.20  ! "no-route" で落ちる
+ping8 0.0.253.235.10.23.0.2                ! R2 で drop される
+
 configure terminal
 interface Gig0/1
  no shutdown
  end
-ping from hostA to 0.0.253.237.10.5.1.20  ! 復旧
+ping8 0.0.253.235.10.23.0.2                ! 復旧
 ```
 
 **確認できること**
 
-- R3 の R3→R4 側リンクを `shutdown` すると次のパケットが `show trace` で `"no-route"` となり落ちる ＝ **送出 IF の admin 状態がフォワーディングに反映される**
-- `no shutdown` だけで復旧。static route を書き直す必要は無く、**egress リンクの復活のみで到達性が戻る**
-- トレース上、失敗パケットは R3 で `drop no-route`、復旧後のパケットは 5 ホップ通しで到達。**ブラックホール発生〜解消の可視化** に使える
+- `shutdown` で `Interface.admin_down = True` になり、次のパケットはトレース上 `egress-admin-down (Gig0/1)` で drop
+- `no shutdown` で即復旧。ルート表は触っていないのに到達性が戻る
+- 失敗トレースが **該当ルータで止まる** ので、どこで詰まったか一目でわかる
 
-### IPv4 下位互換（ASN=0）経路を追加
+### IPv4 下位互換（ASN=0）を同居させる
+
+上の 3 台構成に 4 台目を加えて、R1 に IPv4-compat インターフェースを足します：
 
 ```
+router add R4
+link add L14 R1:Gig0/1 R4:Gig0/0
+
 attach R1
 enable
 configure terminal
-interface Gig0/0
- ipv8 address 0.0.0.0.192.168.1.1          ! ASN=0 に付け替え
+interface Gig0/1
+ ipv8 address 0.0.0.0.192.168.1.1          ! ASN=0 側のエッジ
+ no shutdown
  exit
-ipv8 route 0.0.0.0.0.0.0.0/0 interface Gig0/0
+ipv8 route 0.0.0.0.0.0.0.0/0 0.0.0.0.192.168.1.2
 end
-show ipv8 route                             ! ASN 0 のバケットが現れる
+show ipv8 route                             ! ASN 0 と ASN 65001 のバケットが並ぶ
 ```
 
 **確認できること**
 
 - 1 台のルータが **ネイティブ IPv8 と `ASN = 0` の IPv4-compat を同居** できる
-- `show ipv8 route` に ASN バケットが 2 つ（元の `65001` と新しい `0`）並び、Tier 1 ルックアップが機能したまま `ASN = 0` だけ IPv4 短絡経路を使う動きを確認できる
-- 再起動・リロード不要で **設定が即時反映** される（実機 IOS と同じ挙動）
+- `show ipv8 route` に ASN バケットが 2 つ（`0` と `65001`）並び、Tier 1 が機能したまま `ASN = 0` だけ IPv4 短絡を取る
+- 再起動・リロード不要、実機 IOS と同じ挙動で **設定が即時反映**
 
-> 迷ったら `routers` / `hosts` / `show trace` の 3 つで現状を確認できます。
+> 迷ったら `routers` / `links` / `show trace` の 3 つで現状を確認できます。
 
 ---
 
